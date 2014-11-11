@@ -5,22 +5,18 @@ import android.app.Activity;
 import android.app.ActionBar;
 import android.app.Fragment;
 import android.app.FragmentManager;
-import android.content.Context;
 import android.content.Intent;
-import android.os.Build;
+import android.graphics.Color;
 import android.os.Bundle;
 import android.util.Log;
-import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.support.v4.widget.DrawerLayout;
-import android.widget.ArrayAdapter;
 import android.widget.SeekBar;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import com.thalmic.myo.AbstractDeviceListener;
 import com.thalmic.myo.Arm;
@@ -31,8 +27,6 @@ import com.thalmic.myo.Pose;
 import com.thalmic.myo.Quaternion;
 import com.thalmic.myo.XDirection;
 import com.thalmic.myo.scanner.ScanActivity;
-
-import org.w3c.dom.Text;
 
 import java.text.DecimalFormat;
 
@@ -47,6 +41,8 @@ public class MainActivity extends Activity
     private DeviceListener mListener;
     private SeekBar mSeekBar;
     private TextView percentText;
+    private TextView poseText;
+    private TextView orientText;
 
 
 
@@ -73,6 +69,8 @@ public class MainActivity extends Activity
 
         mSeekBar = (SeekBar) findViewById(R.id.seek_bar);
         percentText = (TextView) findViewById(R.id.percent_text);
+        poseText = (TextView) findViewById(R.id.current_pose);
+        orientText = (TextView) findViewById(R.id.orientation_text);
 
         mSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
             @Override
@@ -97,20 +95,32 @@ public class MainActivity extends Activity
             finish();
             return;
         }
+        createMyoListener();
 
-        final MainActivity self = this;
-        final TextView poseText = (TextView) findViewById(R.id.current_pose);
+        Hub.getInstance().addListener(mListener);
+        Hub.getInstance().pairWithAnyMyo();
+
+    }
+
+    private void createMyoListener() {
         mListener = new AbstractDeviceListener() {
             private Arm mArm = Arm.UNKNOWN;
             private XDirection mXDirection = XDirection.UNKNOWN;
-            private int initRoll = 0;
+
+            private int rollOffset = 0;
             private int roll;
             private int prevRoll = 0;
             private int pitch;
             private int yaw;
+
             private boolean active = false;
             private Pose curPose = Pose.UNKNOWN;
-            private int startRoll = 0;
+            private boolean powerLocked = false;
+            private int powerLockingStage = 0;
+            private long powerLockingStart = 0;
+
+
+
             public void onConnect(Myo myo, long timestamp) {
                 poseText.setText("Myo Connected!");
             }
@@ -124,7 +134,7 @@ public class MainActivity extends Activity
             public void onPose(Myo myo, long timestamp, Pose pose) {
                 poseText.setText("Pose: " + pose);
 
-                if (pose == Pose.THUMB_TO_PINKY) {
+                if (!powerLocked && powerLockingStage == 0 && pose == Pose.THUMB_TO_PINKY) {
                     if (!active) {
                         myo.vibrate(Myo.VibrationType.SHORT);
                     }
@@ -134,11 +144,6 @@ public class MainActivity extends Activity
                     active = !active;
                 }
 
-                if (pose == Pose.FINGERS_SPREAD) {
-                    startRoll = roll;
-                }
-
-                //TODO: Do something awesome.
                 curPose = pose;
             }
 
@@ -148,7 +153,7 @@ public class MainActivity extends Activity
             public void onArmRecognized(Myo myo, long timestamp, Arm arm, XDirection xDirection) {
                 mArm = arm;
                 mXDirection = xDirection;
-                initRoll = roll - 9; //Save initial roll plus tiny offset for turning arm
+                rollOffset = roll - 9; //Save initial roll plus tiny offset for turning arm
             }
             // onArmLost() is called whenever Myo has detected that it was moved from a stable position on a person's arm after
             // it recognized the arm. Typically this happens when someone takes Myo off of their arm, but it can also happen
@@ -157,16 +162,16 @@ public class MainActivity extends Activity
             public void onArmLost(Myo myo, long timestamp) {
                 mArm = Arm.UNKNOWN;
                 mXDirection = XDirection.UNKNOWN;
-                initRoll = 0;
+                rollOffset = 0;
             }
 
 
             @Override
             public void onOrientationData(Myo myo, long timestamp, Quaternion rotation) {
                 DecimalFormat twoDForm = new DecimalFormat("#.##");
-                TextView orientText = (TextView) findViewById(R.id.orientation_text);
+
                 prevRoll = roll;
-                roll = (int) Math.toDegrees(Quaternion.roll(rotation)) - initRoll;
+                roll = (int) Math.toDegrees(Quaternion.roll(rotation)) - rollOffset;
                 pitch = (int) (Math.toDegrees(Quaternion.pitch(rotation)));
                 yaw = (int) Math.toDegrees(Quaternion.yaw(rotation));
                 orientText.setText(
@@ -184,14 +189,52 @@ public class MainActivity extends Activity
                 orientText.setRotation(roll);
                 orientText.setRotationX(pitch);
                 orientText.setRotationY(yaw);
-                if (curPose == Pose.FINGERS_SPREAD || curPose == Pose.FIST) {
+
+                // Power(un)locking should take no more than 2 seconds
+                if (powerLockingStage != 0 && System.nanoTime() > powerLockingStart + 4000000000L) {
+                    powerLockingStage = 0;
+                    if (!powerLocked) {
+                        poseText.setTextColor(Color.BLACK);
+                    }
+                    else {
+                        poseText.setTextColor(Color.RED);
+                    }
+
+                }
+
+                if (active && powerLockingStage == 0 &&
+                        (curPose == Pose.FINGERS_SPREAD || curPose == Pose.FIST)) {
                     mSeekBar.setProgress(mSeekBar.getProgress() + roll - prevRoll);
+                }
+
+                // Power(un)locking works in three stages, hold thumb to pinky when moving your
+                // arm from bottom to top and then spread your fingers.
+                if (curPose == Pose.THUMB_TO_PINKY) {
+                    if (pitch > 50) {
+                        powerLockingStage = 1;
+                        powerLockingStart = System.nanoTime();
+                        poseText.setTextColor(Color.BLUE);
+
+                    }
+                    else if (powerLockingStage == 1 && pitch < -50) {
+                        powerLockingStage = 2;
+                        poseText.setTextColor(Color.YELLOW);
+
+                    }
+                }
+                else if (powerLockingStage == 2 && curPose == Pose.FINGERS_SPREAD) {
+                    powerLockingStage = 0;
+                    powerLocked = !powerLocked;
+                    active = !powerLocked;
+                    if (powerLocked) {
+                        poseText.setTextColor(Color.RED);
+                    }
+                    else {
+                        poseText.setTextColor(Color.BLACK);
+                    }
                 }
             }
         };
-        Hub.getInstance().addListener(mListener);
-        Hub.getInstance().pairWithAnyMyo();
-
     }
 
     public void pairMyo(View view) {
