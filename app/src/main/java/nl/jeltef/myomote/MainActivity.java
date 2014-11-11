@@ -6,8 +6,10 @@ import android.app.ActionBar;
 import android.app.Fragment;
 import android.app.FragmentManager;
 import android.content.Context;
+import android.content.Intent;
 import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.Menu;
@@ -16,8 +18,23 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.support.v4.widget.DrawerLayout;
 import android.widget.ArrayAdapter;
+import android.widget.SeekBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
+import com.thalmic.myo.AbstractDeviceListener;
+import com.thalmic.myo.Arm;
+import com.thalmic.myo.DeviceListener;
+import com.thalmic.myo.Hub;
+import com.thalmic.myo.Myo;
+import com.thalmic.myo.Pose;
+import com.thalmic.myo.Quaternion;
+import com.thalmic.myo.XDirection;
+import com.thalmic.myo.scanner.ScanActivity;
+
+import org.w3c.dom.Text;
+
+import java.text.DecimalFormat;
 
 public class MainActivity extends Activity
         implements NavigationDrawerFragment.NavigationDrawerCallbacks {
@@ -26,11 +43,19 @@ public class MainActivity extends Activity
      * Fragment managing the behaviors, interactions and presentation of the navigation drawer.
      */
     private NavigationDrawerFragment mNavigationDrawerFragment;
+    private final static String TAG = "MainActivity";
+    private DeviceListener mListener;
+    private SeekBar mSeekBar;
+    private TextView percentText;
+
+
 
     /**
      * Used to store the last screen title. For use in {@link #restoreActionBar()}.
      */
     private CharSequence mTitle;
+
+    private Hub hub;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,6 +70,134 @@ public class MainActivity extends Activity
         mNavigationDrawerFragment.setUp(
                 R.id.navigation_drawer,
                 (DrawerLayout) findViewById(R.id.drawer_layout));
+
+        mSeekBar = (SeekBar) findViewById(R.id.seek_bar);
+        percentText = (TextView) findViewById(R.id.percent_text);
+
+        mSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override
+            public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
+                percentText.setText("" + i);
+            }
+
+            @Override
+            public void onStartTrackingTouch(SeekBar seekBar) {
+
+            }
+
+            @Override
+            public void onStopTrackingTouch(SeekBar seekBar) {
+
+            }
+        });
+
+        hub = Hub.getInstance();
+        if (!hub.init(this)) {
+            Log.e(TAG, "Could not initialize hub");
+            finish();
+            return;
+        }
+
+        final MainActivity self = this;
+        final TextView poseText = (TextView) findViewById(R.id.current_pose);
+        mListener = new AbstractDeviceListener() {
+            private Arm mArm = Arm.UNKNOWN;
+            private XDirection mXDirection = XDirection.UNKNOWN;
+            private int initRoll = 0;
+            private int roll;
+            private int prevRoll = 0;
+            private int pitch;
+            private int yaw;
+            private boolean active = false;
+            private Pose curPose = Pose.UNKNOWN;
+            private int startRoll = 0;
+            public void onConnect(Myo myo, long timestamp) {
+                poseText.setText("Myo Connected!");
+            }
+
+            @Override
+            public void onDisconnect(Myo myo, long timestamp) {
+                poseText.setText("Myo Disconnected!");
+            }
+
+            @Override
+            public void onPose(Myo myo, long timestamp, Pose pose) {
+                poseText.setText("Pose: " + pose);
+
+                if (pose == Pose.THUMB_TO_PINKY) {
+                    if (!active) {
+                        myo.vibrate(Myo.VibrationType.SHORT);
+                    }
+                    else {
+                        myo.vibrate(Myo.VibrationType.MEDIUM);
+                    }
+                    active = !active;
+                }
+
+                if (pose == Pose.FINGERS_SPREAD) {
+                    startRoll = roll;
+                }
+
+                //TODO: Do something awesome.
+                curPose = pose;
+            }
+
+            // onArmRecognized() is called whenever Myo has recognized a setup gesture after someone has put it on their
+            // arm. This lets Myo know which arm it's on and which way it's facing.
+            @Override
+            public void onArmRecognized(Myo myo, long timestamp, Arm arm, XDirection xDirection) {
+                mArm = arm;
+                mXDirection = xDirection;
+                initRoll = roll - 9; //Save initial roll plus tiny offset for turning arm
+            }
+            // onArmLost() is called whenever Myo has detected that it was moved from a stable position on a person's arm after
+            // it recognized the arm. Typically this happens when someone takes Myo off of their arm, but it can also happen
+            // when Myo is moved around on the arm.
+            @Override
+            public void onArmLost(Myo myo, long timestamp) {
+                mArm = Arm.UNKNOWN;
+                mXDirection = XDirection.UNKNOWN;
+                initRoll = 0;
+            }
+
+
+            @Override
+            public void onOrientationData(Myo myo, long timestamp, Quaternion rotation) {
+                DecimalFormat twoDForm = new DecimalFormat("#.##");
+                TextView orientText = (TextView) findViewById(R.id.orientation_text);
+                prevRoll = roll;
+                roll = (int) Math.toDegrees(Quaternion.roll(rotation)) - initRoll;
+                pitch = (int) (Math.toDegrees(Quaternion.pitch(rotation)));
+                yaw = (int) Math.toDegrees(Quaternion.yaw(rotation));
+                orientText.setText(
+                        "Pitch: " + pitch +
+                        "\nRoll: " + roll +
+                        "\nYaw: " + yaw
+                );
+
+                // Adjust roll and pitch for the orientation of the Myo on the arm.
+                if (mXDirection == XDirection.TOWARD_ELBOW) {
+                    roll *= -1;
+                    pitch *= -1;
+                }
+
+                orientText.setRotation(roll);
+                orientText.setRotationX(pitch);
+                orientText.setRotationY(yaw);
+                if (curPose == Pose.FINGERS_SPREAD || curPose == Pose.FIST) {
+                    mSeekBar.setProgress(mSeekBar.getProgress() + roll - prevRoll);
+                }
+            }
+        };
+        Hub.getInstance().addListener(mListener);
+        Hub.getInstance().pairWithAnyMyo();
+
+    }
+
+    public void pairMyo(View view) {
+        Log.e(TAG, "Searching for Myo");
+        Intent intent = new Intent(this, ScanActivity.class);
+        this.startActivity(intent);
     }
 
     @Override

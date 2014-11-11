@@ -6,8 +6,64 @@
 
     <!-- As the main content view, the view below consumes the entire
          space available using match_parent in both dimensions. -->
-    <FrameLayout android:id="@+id/container" android:layout_width="match_parent"
-        android:layout_height="match_parent" />
+    <RelativeLayout android:id="@+id/container" android:layout_width="match_parent"
+        android:layout_height="match_parent" >
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Pair with myo"
+            android:id="@+id/pair_button"
+            android:layout_gravity="center"
+            android:onClick="pairMyo"
+            android:layout_alignParentBottom="true"
+            android:layout_centerHorizontal="true" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="?android:attr/textAppearanceLarge"
+            android:text="PoseText"
+            android:id="@+id/current_pose"
+            android:layout_alignParentTop="true"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="32dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="?android:attr/textAppearanceLarge"
+            android:text="Orientation"
+            android:id="@+id/orientation_text"
+            android:layout_below="@+id/current_pose"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="15dp" />
+
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textAppearance="?android:attr/textAppearanceLarge"
+            android:text="50"
+            android:id="@+id/percent_text"
+            android:layout_above="@+id/seek_bar"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="15dp" />
+
+        <SeekBar
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:id="@+id/seek_bar"
+            android:layout_above="@+id/pair_button"
+            android:layout_alignParentLeft="true"
+            android:layout_alignParentStart="true"
+            android:layout_marginBottom="62dp"
+            android:layout_alignParentRight="true"
+            android:layout_alignParentEnd="true"
+            android:max="100"
+            android:progress="50"
+            android:indeterminate="false" />
+
+    </RelativeLayout>
 
     <!-- android:layout_gravity="start" tells DrawerLayout to treat
          this as a sliding drawer on the left side for left-to-right
@@ -15,10 +71,11 @@
          If you're not building against API 17 or higher, use
          android:layout_gravity="left" instead. -->
     <!-- The drawer is given a fixed width in dp and extends the full height of
-         the container. -->
-    <fragment android:id="@+id/navigation_drawer"
+         the    -->
+         <fragment android:id="@+id/navigation_drawer"
         android:layout_width="@dimen/navigation_drawer_width" android:layout_height="match_parent"
         android:layout_gravity="start" android:name="nl.jeltef.myomote.NavigationDrawerFragment"
         tools:layout="@layout/fragment_navigation_drawer" />
+
 
 </android.support.v4.widget.DrawerLayout>
