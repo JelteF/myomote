@@ -133,6 +133,9 @@ public class MainActivity extends Activity
             @Override
             public void onPose(Myo myo, long timestamp, Pose pose) {
                 poseText.setText("Pose: " + pose);
+                if (powerLockingStage == 3 && pose != Pose.FINGERS_SPREAD) {
+                    powerLockingStage = 0;
+                }
 
                 if (!powerLocked && powerLockingStage == 0 && pose == Pose.THUMB_TO_PINKY) {
                     if (!active) {
@@ -190,8 +193,9 @@ public class MainActivity extends Activity
                 orientText.setRotationX(pitch);
                 orientText.setRotationY(yaw);
 
-                // Power(un)locking should take no more than 2 seconds
-                if (powerLockingStage != 0 && System.nanoTime() > powerLockingStart + 4000000000L) {
+                // Power(un)locking should take no more than 4 seconds
+                if (powerLockingStage != 0 && powerLockingStage != 3 &&
+                        System.nanoTime() > powerLockingStart + 4000000000L) {
                     powerLockingStage = 0;
                     if (!powerLocked) {
                         poseText.setTextColor(Color.BLACK);
@@ -223,14 +227,18 @@ public class MainActivity extends Activity
                     }
                 }
                 else if (powerLockingStage == 2 && curPose == Pose.FINGERS_SPREAD) {
-                    powerLockingStage = 0;
+                    powerLockingStage = 3;
                     powerLocked = !powerLocked;
                     active = !powerLocked;
                     if (powerLocked) {
                         poseText.setTextColor(Color.RED);
+                        myo.vibrate(Myo.VibrationType.LONG);
+
                     }
                     else {
                         poseText.setTextColor(Color.BLACK);
+                        myo.vibrate(Myo.VibrationType.SHORT);
+                        myo.vibrate(Myo.VibrationType.SHORT);
                     }
                 }
             }
