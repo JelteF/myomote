@@ -7,7 +7,7 @@ Myos in the vicinity
 
 One to setup the connection between the phone and VLC on the network. This page
 will also contain some VLC controls and info about its state and currently
-playing file. Because VLC uses a http api, the app will need [requests
+playing file. Because VLC uses a http api, the app will need a way to send [requests](https://developer.android.com/training/volley/simple.html)
 
 The VLC and Myo setup views will be tabs on the opening screen of the app.
 
