@@ -15,7 +15,9 @@ Finally there will be a settings view, where it is possible to disable/enable
 certain features and controls.
 
 ### Mockups
-
+![](balsamiq/myo_screen.png)
+![](balsamiq/vlc_screen.png)
+![](balsamiq/settings_screen.png)
 
 ### APIs and SDKs
 - VLC: https://wiki.videolan.org/VLC_HTTP_requests/
