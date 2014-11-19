@@ -26,11 +26,11 @@ dependencies {
 
     repositories {
         maven {
-            url '/home/jelte/university/appstudio/myo-android-sdk-0.6.0/myorepository'
+            url '/home/jelte/university/appstudio/sdkmyo/myorepository'
         }
     }
 
     compile 'com.android.support:support-v4:21.0.0'
-    compile 'com.thalmic:myosdk:0.6.0@aar'
+    compile 'com.thalmic:myosdk:0.8.+@aar'
     compile 'com.android.support:support-v13:21.0.0'
 }

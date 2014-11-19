@@ -29,6 +29,7 @@ import com.thalmic.myo.Hub;
 import com.thalmic.myo.Myo;
 import com.thalmic.myo.Pose;
 import com.thalmic.myo.Quaternion;
+import com.thalmic.myo.Vector3;
 import com.thalmic.myo.XDirection;
 import com.thalmic.myo.scanner.ScanActivity;
 
@@ -55,6 +56,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
     private static TextView percentText;
     private static TextView poseText;
     private static TextView orientText;
+    private static TextView accelText;
 
 
     @Override
@@ -209,6 +211,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             percentText = (TextView) view.findViewById(R.id.percent_text);
             poseText = (TextView) view.findViewById(R.id.current_pose);
             orientText = (TextView) view.findViewById(R.id.orientation_text);
+            accelText = (TextView) view.findViewById(R.id.accelerometer_text);
 
             mSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
                 @Override
@@ -238,7 +241,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             activity.createMyoListener();
 
             Hub.getInstance().addListener(mListener);
-            Hub.getInstance().pairWithAnyMyo();
+            Hub.getInstance().attachToAdjacentMyo();
 
 
             return view;
@@ -334,7 +337,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             // onArmRecognized() is called whenever Myo has recognized a setup gesture after someone has put it on their
             // arm. This lets Myo know which arm it's on and which way it's facing.
             @Override
-            public void onArmRecognized(Myo myo, long timestamp, Arm arm, XDirection xDirection) {
+            public void onArmSync(Myo myo, long timestamp, Arm arm, XDirection xDirection) {
                 mArm = arm;
                 mXDirection = xDirection;
                 rollOffset = roll - 9; //Save initial roll plus tiny offset for turning arm
@@ -343,10 +346,15 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             // it recognized the arm. Typically this happens when someone takes Myo off of their arm, but it can also happen
             // when Myo is moved around on the arm.
             @Override
-            public void onArmLost(Myo myo, long timestamp) {
+            public void onArmUnsync(Myo myo, long timestamp) {
                 mArm = Arm.UNKNOWN;
                 mXDirection = XDirection.UNKNOWN;
                 rollOffset = 0;
+            }
+
+            @Override
+            public void onAccelerometerData(Myo myo, long timestamp, Vector3 vec) {
+                accelText.setText("Acc: " + vec.length());
             }
 
 
