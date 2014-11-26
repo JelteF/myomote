@@ -441,4 +441,9 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
         this.startActivity(intent);
     }
 
+    public void findVLC(View view) {
+        Log.e(TAG, "Searching for VLC");
+
+    }
+
 }
