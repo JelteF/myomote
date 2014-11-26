@@ -374,8 +374,9 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
 
                 // Adjust roll and pitch for the orientation of the Myo on the arm.
                 if (mXDirection == XDirection.TOWARD_ELBOW) {
-                    roll *= -1;
                     pitch *= -1;
+                    yaw += 180;
+                    roll *= -1;
                 }
 
                 orientText.setRotation(roll);
