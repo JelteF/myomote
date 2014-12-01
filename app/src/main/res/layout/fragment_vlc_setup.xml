@@ -17,7 +17,7 @@
         android:layout_height="wrap_content"
         android:textAppearance="?android:attr/textAppearanceMedium"
         android:text="Not found yet"
-        android:id="@+id/ip_address_text"
+        android:id="@+id/ipAddressText"
         android:layout_marginTop="13dp"
         android:layout_below="@+id/button"
         android:layout_centerHorizontal="true"
@@ -32,7 +32,7 @@
         android:layout_alignParentRight="true"
         android:layout_marginLeft="20dp"
         android:layout_marginRight="20dp"
-        android:layout_below="@+id/ip_address_text"
+        android:layout_below="@+id/ipAddressText"
         >
 
         <TextView
@@ -65,7 +65,8 @@
         android:id="@+id/connectButton"
         android:layout_marginTop="15dp"
         android:layout_below="@+id/passwordLayout"
-        android:layout_centerHorizontal="true" />
+        android:layout_centerHorizontal="true"
+        android:onClick="connectVLC" />
 
     <RelativeLayout
         android:layout_width="wrap_content"
@@ -144,7 +145,8 @@
             android:layout_height="wrap_content"
             android:src="@drawable/ic_skip_previous_black_36dp"
             android:id="@+id/previousButton"
-            android:layout_gravity="center_vertical" />
+            android:layout_gravity="center_vertical"
+            android:onClick="clickVlcFragment" />
 
         <ImageButton
             android:layout_width="wrap_content"
@@ -152,26 +154,29 @@
             android:src="@drawable/ic_fast_rewind_black_36dp"
             android:id="@+id/rewindButton"
             android:layout_gravity="center_vertical"
-            />
+            android:onClick="clickVlcFragment" />
 
         <ImageButton
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:src="@drawable/ic_play_arrow_black_36dp"
             android:id="@+id/playButton"
-            android:layout_gravity="center_vertical" />
+            android:layout_gravity="center_vertical"
+            android:onClick="clickVlcFragment" />
 
         <ImageButton
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:src="@drawable/ic_fast_forward_black_36dp"
-            android:id="@+id/forwardButton" />
+            android:id="@+id/forwardButton"
+            android:onClick="clickVlcFragment" />
 
         <ImageButton
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:src="@drawable/ic_skip_next_black_36dp"
-            android:id="@+id/nextButton" />
+            android:id="@+id/nextButton"
+            android:onClick="clickVlcFragment" />
     </LinearLayout>
 
 
