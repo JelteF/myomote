@@ -55,7 +55,8 @@
             android:layout_alignParentRight="true"
             android:layout_alignParentEnd="true"
             android:layout_toRightOf="@+id/passwordLabel"
-            android:layout_toEndOf="@+id/passwordLabel" />
+            android:layout_toEndOf="@+id/passwordLabel"
+            android:text="koekjes" />
     </RelativeLayout>
 
     <Button
@@ -82,18 +83,18 @@
         <SeekBar
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:id="@+id/soundSeekBar"
+            android:id="@+id/volumeSeekBar"
             android:layout_alignParentStart="false"
-            android:text="Medium Text"
             android:layout_alignParentEnd="true"
-            android:layout_toRightOf="@+id/soundLabel" />
+            android:layout_toRightOf="@+id/volumeLabel"
+            android:max="512" />
 
         <TextView
             android:layout_width="@dimen/vlc_label_width"
             android:layout_height="wrap_content"
             android:textAppearance="?android:attr/textAppearanceMedium"
             android:text="Volume:"
-            android:id="@+id/soundLabel"
+            android:id="@+id/volumeLabel"
             android:layout_centerVertical="true"
             android:layout_alignParentLeft="true"
             android:layout_alignParentStart="true" />
@@ -104,7 +105,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:textAppearance="?android:attr/textAppearanceMedium"
-        android:id="@+id/relativeLayout"
+        android:id="@+id/timeLineLayout"
         android:layout_marginTop="37dp"
         android:layout_below="@+id/soundLayout"
         android:layout_alignRight="@+id/passwordLayout"
@@ -115,18 +116,17 @@
         <SeekBar
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:id="@+id/seekBar"
+            android:id="@+id/timeSeekBar"
             android:layout_alignParentStart="false"
-            android:text="Medium Text"
             android:layout_alignParentEnd="true"
-            android:layout_toRightOf="@+id/textView" />
+            android:layout_toRightOf="@+id/timeText" />
 
         <TextView
             android:layout_width="@dimen/vlc_label_width"
             android:layout_height="wrap_content"
             android:textAppearance="?android:attr/textAppearanceMedium"
             android:text="00:00:00"
-            android:id="@+id/textView"
+            android:id="@+id/timeText"
             android:layout_centerVertical="true"
             android:layout_alignParentLeft="true"
             android:layout_alignParentStart="true" />
@@ -137,7 +137,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:layout_below="@+id/relativeLayout"
+        android:layout_below="@+id/timeLineLayout"
         android:layout_centerHorizontal="true">
 
         <ImageButton

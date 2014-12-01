@@ -1,8 +1,11 @@
 package nl.jeltef.myomote;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.text.DecimalFormat;
 import java.util.Locale;
+import java.util.concurrent.TimeUnit;
 
 import android.app.Activity;
 import android.app.ActionBar;
@@ -15,7 +18,6 @@ import android.net.Uri;
 import android.net.wifi.SupplicantState;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
-import android.nfc.Tag;
 import android.os.AsyncTask;
 import android.os.Looper;
 import android.support.v13.app.FragmentPagerAdapter;
@@ -49,6 +51,9 @@ import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.impl.auth.BasicScheme;
 import org.apache.http.impl.client.DefaultHttpClient;
+import org.json.JSONException;
+import org.json.JSONObject;
+import org.json.JSONTokener;
 import org.peterbaldwin.vlcremote.sweep.PortSweeper;
 
 
@@ -300,7 +305,19 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
 
         private EditText mPasswordField;
         private TextView mIpAddressText;
+        private SeekBar mTimeSeekBar;
+        private TextView mTimeText;
+        private SeekBar mVolumeSeekBar;
+
         private boolean mConnected = false;
+        private boolean mChangingTime = false;
+        private boolean mChangingVolume = false;
+        long mLastRequest = 0;
+
+
+        private final static int UPDATE_INTERVAL = 500; //half a second
+
+        Runnable mUpdateTask;
         /**
          * Returns a new instance of this fragment for the given section
          * number.
@@ -321,7 +338,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
         @Override
         public View onCreateView(LayoutInflater inflater, ViewGroup container,
                                  Bundle savedInstanceState) {
-            View view = inflater.inflate(R.layout.fragment_vlc_setup, container, false);
+            final View view = inflater.inflate(R.layout.fragment_vlc_setup, container, false);
 
             mPort = 8080;
             mPath = "/requests/";
@@ -330,6 +347,72 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             mPortSweeper = createPortSweeper(this);
             mPasswordField = (EditText) view.findViewById(R.id.passwordField);
             mIpAddressText = (TextView) view.findViewById(R.id.ipAddressText);
+            mTimeSeekBar = (SeekBar) view.findViewById(R.id.timeSeekBar);
+            mTimeText = (TextView) view.findViewById(R.id.timeText);
+            mVolumeSeekBar = (SeekBar) view.findViewById(R.id.volumeSeekBar);
+
+            mTimeSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                @Override
+                public void onProgressChanged(SeekBar seekBar, int full_seconds, boolean fromUser) {
+                    long hours = TimeUnit.SECONDS.toHours(full_seconds);
+                    String hour_string;
+                    long minutes = TimeUnit.SECONDS.toMinutes(full_seconds) -
+                            TimeUnit.HOURS.toMinutes(hours);
+                    long seconds = full_seconds - TimeUnit.MINUTES.toSeconds(minutes) -
+                            TimeUnit.HOURS.toSeconds(hours);
+
+                    if (hours > 0) {
+                         hour_string = String.format("%02d:", hours);
+                    }
+                    else
+                        hour_string = "";
+
+                    mTimeText.setText(hour_string + String.format("%02d:%02d", minutes, seconds));
+
+                    if (fromUser) {
+                        sendStatusCommand("seek", "val=" + full_seconds);
+                    }
+                }
+
+                @Override
+                public void onStartTrackingTouch(SeekBar seekBar) {
+                    mChangingTime = true;
+                }
+
+                @Override
+                public void onStopTrackingTouch(SeekBar seekBar) {
+                    mChangingTime = false;
+                }
+            });
+
+            mVolumeSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                @Override
+                public void onProgressChanged(SeekBar seekBar, int i, boolean fromUser) {
+                    if (fromUser) {
+                        sendStatusCommand("volume", "val=" + i);
+                    }
+                }
+
+                @Override
+                public void onStartTrackingTouch(SeekBar seekBar) {
+                    mChangingVolume = true;
+                }
+
+                @Override
+                public void onStopTrackingTouch(SeekBar seekBar) {
+                    mChangingVolume = false;
+                }
+            });
+
+            mUpdateTask = new Runnable()
+            {
+                @Override
+                public void run() {
+                    sendStatusCommand("", "");
+                    getView().postDelayed(mUpdateTask, UPDATE_INTERVAL);
+                }
+            };
+
             return view;
         }
 
@@ -351,32 +434,32 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             mPassword = Uri.encode(mPasswordField.getText().toString());
             mBaseUrl = "http://" + mHostName + ":" + mPort + mPath;
             //mPasswordField.setText(mBaseUrl);
-
+            startCheckingStatus();
             mConnected = true;
         }
 
-        private void togglePlay() {
-            sendCommand("status", "pl_pause", "");
+        public void togglePlay() {
+            sendStatusCommand("pl_pause", "");
         }
 
-        private void fastForward() {
-            sendCommand("status", "seek", "val=+" + mSeekTime);
+        public void fastForward() {
+            sendStatusCommand("seek", "val=+" + mSeekTime);
         }
 
-        private void rewind() {
-            sendCommand("status", "seek", "val=-" + mSeekTime);
+        public void rewind() {
+            sendStatusCommand("seek", "val=-" + mSeekTime);
         }
 
-        private void next() {
-            sendCommand("status", "pl_next", "val=-" + mSeekTime);
+        public void next() {
+            sendStatusCommand("pl_next", "val=-" + mSeekTime);
         }
 
         private void previous() {
-            sendCommand("status", "pl_previous", "val=-" + mSeekTime);
+            sendStatusCommand("pl_previous", "val=-" + mSeekTime);
         }
 
-        private void sendCommand(String file, String command, String params) {
-            HttpGet request = new HttpGet(mBaseUrl + file + ".json?command=" + command +
+        private void sendStatusCommand(String command, String params) {
+            HttpGet request = new HttpGet(mBaseUrl + "status.json?command=" + command +
                     "&" + params);
             request.addHeader(BasicScheme.authenticate(
                     new UsernamePasswordCredentials("", mPassword), "UTF-8", false));
@@ -409,25 +492,70 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             }
         }
 
-        class SendRequest extends AsyncTask<HttpGet, Void, HttpResponse> {
+        void startCheckingStatus()
+        {
+            mUpdateTask.run();
+        }
 
-            protected HttpResponse doInBackground(HttpGet... request) {
+        void stopCheckingStatus()
+        {
+            getView().removeCallbacks(mUpdateTask);
+        }
+
+        class SendRequest extends AsyncTask<HttpGet, Void, JSONObject> {
+
+            protected JSONObject doInBackground(HttpGet... request) {
+                // Don't overload VLC with requests.
+                if (mLastRequest + 60000000 > System.nanoTime()) {
+                    return null;
+                }
+                mLastRequest = System.nanoTime();
+
                 HttpClient client = new DefaultHttpClient();
                 Log.d(TAG, "Sending request to: " + request[0].getURI());
 
                 try {
                     HttpResponse response = client.execute(request[0]);
                     Log.d(TAG, "Request status code: " + response.getStatusLine().getStatusCode());
-                    Log.d(TAG, "Request content: " + response.getEntity().getContent().toString());
 
-                    return response;
+                    // Source: http://stackoverflow.com/a/2845612/2570866
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "UTF-8"));
+                    StringBuilder builder = new StringBuilder();
+                    for (String line = null; (line = reader.readLine()) != null;) {
+                        builder.append(line).append("\n");
+                    }
+
+                    JSONTokener tokener = new JSONTokener(builder.toString());
+                    JSONObject result = new JSONObject(tokener);
+
+                    return result;
                 } catch (IOException e) {
+                    stopCheckingStatus();
+                    e.printStackTrace();
+                    return null;
+                } catch (JSONException e) {
+                    stopCheckingStatus();
                     e.printStackTrace();
                     return null;
                 }
             }
-            protected void onPostExecute(HttpResponse response) {
 
+            protected void onPostExecute(JSONObject result) {
+                if (result == null) {
+                    return;
+                }
+                try {
+                    if (!mChangingVolume)
+                        mVolumeSeekBar.setProgress(result.getInt("volume"));
+                    if (!mChangingTime) {
+                        mTimeSeekBar.setMax(result.getInt("length"));
+                        mTimeSeekBar.setProgress(result.getInt("time"));
+                    }
+
+                } catch (JSONException e) {
+                    stopCheckingStatus();
+                    e.printStackTrace();
+                }
             }
         }
 
@@ -439,8 +567,6 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
         private int mPort;
         private int mWorkers;
         public static final int DEFAULT_WORKERS = 16;
-
-
 
         private static byte[] toByteArray(int i) {
             int i4 = (i >> 24) & 0xFF;
@@ -508,6 +634,10 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             @Override
             public void onPose(Myo myo, long timestamp, Pose pose) {
                 poseText.setText("Pose: " + pose);
+
+                if (active && pose == Pose.FINGERS_SPREAD) {
+                    mVlcFragment.togglePlay();
+                }
 
                 if (powerLockingStage == 3 && pose != Pose.FINGERS_SPREAD) {
                     powerLockingStage = 0;

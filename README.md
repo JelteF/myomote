@@ -17,6 +17,5 @@ and turn the volume up and down by moving/turning your arm.
 - android-vlc-remote: https://github.com/samicemalone/android-vlc-remote/
 
 ### LICENCE
-This project is licensed under the MIT licence, with the exception of the
-imported android-vlc-remote app. The code that comes from there is licenced
-under GPLv3. Any changes I make however will me licenced under MIT
+This project is licensed under the GPLv3 license since it uses code from
+[android-vlc-remote](https://github.com/samicemalone/android-vlc-remote).
