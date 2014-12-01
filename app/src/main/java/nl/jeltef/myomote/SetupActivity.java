@@ -10,6 +10,10 @@ import android.app.FragmentManager;
 import android.app.FragmentTransaction;
 import android.content.Intent;
 import android.graphics.Color;
+import android.net.wifi.SupplicantState;
+import android.net.wifi.WifiInfo;
+import android.net.wifi.WifiManager;
+import android.os.Looper;
 import android.support.v13.app.FragmentPagerAdapter;
 import android.os.Bundle;
 import android.support.v4.view.ViewPager;
@@ -32,6 +36,8 @@ import com.thalmic.myo.Quaternion;
 import com.thalmic.myo.Vector3;
 import com.thalmic.myo.XDirection;
 import com.thalmic.myo.scanner.ScanActivity;
+
+import org.peterbaldwin.vlcremote.sweep.PortSweeper;
 
 
 public class SetupActivity extends Activity implements ActionBar.TabListener {
@@ -256,11 +262,29 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             this.startActivity(intent);
         }
     }
+    /**
+     * Begin GPLv3 code
+     */
+    private WifiInfo getConnectionInfo() {
+        Object service = getSystemService(WIFI_SERVICE);
+        WifiManager manager = (WifiManager) service;
+        WifiInfo info = manager.getConnectionInfo();
+        if (info != null) {
+            SupplicantState state = info.getSupplicantState();
+            if (state.equals(SupplicantState.COMPLETED)) {
+                return info;
+            }
+        }
+        return null;
+    }
+    /**
+     * End GPLv3 code
+     */
 
     /**
      * A placeholder fragment containing a simple view.
      */
-    public static class VlcSetupFragment extends Fragment {
+    public static class VlcSetupFragment extends Fragment implements PortSweeper.Callback {
         /**
          * Returns a new instance of this fragment for the given section
          * number.
@@ -275,14 +299,74 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
         public VlcSetupFragment() {
         }
 
+        public SetupActivity getSetupActivity() {
+            return (SetupActivity) getActivity();
+        }
         @Override
         public View onCreateView(LayoutInflater inflater, ViewGroup container,
                                  Bundle savedInstanceState) {
             View view = inflater.inflate(R.layout.fragment_vlc_setup, container, false);
 
+            mPort = 8080;
+            mFile = "";
+            mWorkers = DEFAULT_WORKERS;
 
+            mPortSweeper = createPortSweeper(this);
             return view;
         }
+
+        @Override
+        public void onHostFound(String hostname, int responseCode) {
+            Log.e(TAG, "Found host " + hostname + " with code " + responseCode);
+        }
+
+        @Override
+        public void onProgress(int progress, int max) {
+            Log.e(TAG, "At " + progress + " of " + max);
+        }
+
+        /**
+         * Start GPLv3 code
+         */
+        private PortSweeper mPortSweeper;
+        private String mFile;
+        private int mPort;
+        private int mWorkers;
+        private long mCreateTime;
+        public static final int DEFAULT_WORKERS = 16;
+
+        private static byte[] toByteArray(int i) {
+            int i4 = (i >> 24) & 0xFF;
+            int i3 = (i >> 16) & 0xFF;
+            int i2 = (i >> 8) & 0xFF;
+            int i1 = i & 0xFF;
+            return new byte[] {
+                    (byte) i1, (byte) i2, (byte) i3, (byte) i4
+            };
+        }
+
+
+        private PortSweeper createPortSweeper(PortSweeper.Callback callback) {
+            return new PortSweeper(mPort, mFile, mWorkers, callback, Looper.myLooper());
+        }
+
+        private byte[] getIpAddress() {
+            WifiInfo info = getSetupActivity().getConnectionInfo();
+            if (info != null) {
+                return toByteArray(info.getIpAddress());
+            }
+            return null;
+        }
+
+        private void startSweep() {
+            byte[] ipAddress = getIpAddress();
+            if (ipAddress != null) {
+                mPortSweeper.sweep(ipAddress);
+            }
+        }
+        /**
+         * End GPLv3 code
+         */
     }
 
 
@@ -443,6 +527,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
 
     public void findVLC(View view) {
         Log.e(TAG, "Searching for VLC");
+
 
     }
 

@@ -5,6 +5,7 @@
       <module fileurl="file://$PROJECT_DIR$/Myomote.iml" filepath="$PROJECT_DIR$/Myomote.iml" />
       <module fileurl="file://$PROJECT_DIR$/app/app.iml" filepath="$PROJECT_DIR$/app/app.iml" />
       <module fileurl="file://$PROJECT_DIR$/myomote.iml" filepath="$PROJECT_DIR$/myomote.iml" />
+      <module fileurl="file://$PROJECT_DIR$/../android-vlc-remote/vlc-remote.iml" filepath="$PROJECT_DIR$/../android-vlc-remote/vlc-remote.iml" />
     </modules>
   </component>
 </project>
