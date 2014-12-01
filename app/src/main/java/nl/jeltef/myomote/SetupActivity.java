@@ -313,9 +313,12 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
         private boolean mChangingTime = false;
         private boolean mChangingVolume = false;
         long mLastRequest = 0;
+        int mVolumeDifferenceTotal = 0;
+
 
 
         private final static int UPDATE_INTERVAL = 500; //half a second
+        private final static long REQUEST_DISTANCE = 60000000;
 
         Runnable mUpdateTask;
         /**
@@ -370,7 +373,10 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                     mTimeText.setText(hour_string + String.format("%02d:%02d", minutes, seconds));
 
                     if (fromUser) {
-                        sendStatusCommand("seek", "val=" + full_seconds);
+                        // Don't overload VLC with requests.
+                        if (requestAllowed()) {
+                            sendStatusCommand("seek", "val=" + full_seconds);
+                        }
                     }
                 }
 
@@ -389,7 +395,11 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                 @Override
                 public void onProgressChanged(SeekBar seekBar, int i, boolean fromUser) {
                     if (fromUser) {
-                        sendStatusCommand("volume", "val=" + i);
+                        // Don't overload VLC with requests.
+                        if (requestAllowed()) {
+                            sendStatusCommand("volume", "val=" + i);
+                        }
+
                     }
                 }
 
@@ -414,6 +424,10 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             };
 
             return view;
+        }
+
+        private boolean requestAllowed() {
+            return (mLastRequest + REQUEST_DISTANCE) < System.nanoTime();
         }
 
         @Override
@@ -452,6 +466,26 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
 
         public void next() {
             sendStatusCommand("pl_next", "val=-" + mSeekTime);
+        }
+
+        public void changeVolume(int difference) {
+            String param;
+            mVolumeDifferenceTotal += difference;
+
+            if (!requestAllowed()) {
+                return;
+            }
+
+            mVolumeDifferenceTotal *= 5;
+            if (mVolumeDifferenceTotal >= 0) {
+                param = "+" + mVolumeDifferenceTotal;
+            }
+            else {
+                param = "" + mVolumeDifferenceTotal;
+            }
+
+            sendStatusCommand("volume", "val=" + param);
+            mVolumeDifferenceTotal = 0;
         }
 
         private void previous() {
@@ -505,18 +539,15 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
         class SendRequest extends AsyncTask<HttpGet, Void, JSONObject> {
 
             protected JSONObject doInBackground(HttpGet... request) {
-                // Don't overload VLC with requests.
-                if (mLastRequest + 60000000 > System.nanoTime()) {
-                    return null;
-                }
+
                 mLastRequest = System.nanoTime();
 
                 HttpClient client = new DefaultHttpClient();
-                Log.d(TAG, "Sending request to: " + request[0].getURI());
+                //Log.d(TAG, "Sending request to: " + request[0].getURI());
 
                 try {
                     HttpResponse response = client.execute(request[0]);
-                    Log.d(TAG, "Request status code: " + response.getStatusLine().getStatusCode());
+                    //Log.d(TAG, "Request status code: " + response.getStatusLine().getStatusCode());
 
                     // Source: http://stackoverflow.com/a/2845612/2570866
                     BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "UTF-8"));
@@ -608,18 +639,17 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             private Arm mArm = Arm.UNKNOWN;
             private XDirection mXDirection = XDirection.UNKNOWN;
 
-            private int rollOffset = 0;
-            private int roll;
-            private int prevRoll = 0;
-            private int pitch;
-            private int yaw;
+            private int mRollOffset = 0;
+            private int mRoll;
+            private int mPrevRoll = 0;
+            private int mPitch;
+            private int mYaw;
 
-            private boolean active = false;
-            private Pose curPose = Pose.UNKNOWN;
-            private boolean powerLocked = false;
-            private int powerLockingStage = 0;
-            private long powerLockingStart = 0;
-
+            private boolean mActive = false;
+            private long mActiveSince = 0;
+            private Pose mCurPose = Pose.UNKNOWN;
+            private boolean mGestureActionDone = false;
+            private long mTimeOfLastAction = 0;
 
 
             public void onConnect(Myo myo, long timestamp) {
@@ -635,25 +665,13 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             public void onPose(Myo myo, long timestamp, Pose pose) {
                 poseText.setText("Pose: " + pose);
 
-                if (active && pose == Pose.FINGERS_SPREAD) {
+                if (mActive && pose == Pose.FINGERS_SPREAD) {
                     mVlcFragment.togglePlay();
                 }
 
-                if (powerLockingStage == 3 && pose != Pose.FINGERS_SPREAD) {
-                    powerLockingStage = 0;
-                }
 
-                if (!powerLocked && powerLockingStage == 0 && pose == Pose.THUMB_TO_PINKY) {
-                    if (!active) {
-                        myo.vibrate(Myo.VibrationType.SHORT);
-                    }
-                    else {
-                        myo.vibrate(Myo.VibrationType.MEDIUM);
-                    }
-                    active = !active;
-                }
-
-                curPose = pose;
+                mCurPose = pose;
+                mGestureActionDone = false;
             }
 
             // onArmRecognized() is called whenever Myo has recognized a setup gesture after someone has put it on their
@@ -662,7 +680,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             public void onArmSync(Myo myo, long timestamp, Arm arm, XDirection xDirection) {
                 mArm = arm;
                 mXDirection = xDirection;
-                rollOffset = roll - 9; //Save initial roll plus tiny offset for turning arm
+                mRollOffset = mRoll - 9; //Save initial mRoll plus tiny offset for turning arm
             }
             // onArmLost() is called whenever Myo has detected that it was moved from a stable position on a person's arm after
             // it recognized the arm. Typically this happens when someone takes Myo off of their arm, but it can also happen
@@ -671,12 +689,25 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             public void onArmUnsync(Myo myo, long timestamp) {
                 mArm = Arm.UNKNOWN;
                 mXDirection = XDirection.UNKNOWN;
-                rollOffset = 0;
+                mRollOffset = 0;
             }
 
             @Override
             public void onAccelerometerData(Myo myo, long timestamp, Vector3 vec) {
                 accelText.setText("Acc: " + vec.length());
+                if (mCurPose == Pose.THUMB_TO_PINKY && !mGestureActionDone && (vec.length() > 2 || mActive)) {
+                    if (!mActive) {
+                        myo.vibrate(Myo.VibrationType.SHORT);
+                        poseText.setTextColor(Color.GREEN);
+                    }
+                    else {
+                        myo.vibrate(Myo.VibrationType.MEDIUM);
+                        poseText.setTextColor(Color.BLACK);
+
+                    }
+                    mGestureActionDone = true;
+                    mActive = !mActive;
+                }
             }
 
 
@@ -684,74 +715,33 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             public void onOrientationData(Myo myo, long timestamp, Quaternion rotation) {
                 DecimalFormat twoDForm = new DecimalFormat("#.##");
 
-                prevRoll = roll;
-                roll = (int) Math.toDegrees(Quaternion.roll(rotation)) - rollOffset;
-                pitch = (int) (Math.toDegrees(Quaternion.pitch(rotation)));
-                yaw = (int) Math.toDegrees(Quaternion.yaw(rotation));
+                mPrevRoll = mRoll;
+                mRoll = (int) Math.toDegrees(Quaternion.roll(rotation)) - mRollOffset;
+                mPitch = (int) (Math.toDegrees(Quaternion.pitch(rotation)));
+                mYaw = (int) Math.toDegrees(Quaternion.yaw(rotation));
                 orientText.setText(
-                        "Pitch: " + pitch +
-                                "\nRoll: " + roll +
-                                "\nYaw: " + yaw
+                        "Pitch: " + mPitch +
+                                "\nRoll: " + mRoll +
+                                "\nYaw: " + mYaw
                 );
 
-                // Adjust roll and pitch for the orientation of the Myo on the arm.
+                // Adjust mRoll and pitch for the orientation of the Myo on the arm.
                 if (mXDirection == XDirection.TOWARD_ELBOW) {
-                    pitch *= -1;
-                    yaw += 180;
-                    roll *= -1;
+                    mPitch *= -1;
+                    mYaw += 180;
+                    mRoll *= -1;
                 }
 
-                orientText.setRotation(roll);
-                orientText.setRotationX(pitch);
-                orientText.setRotationY(yaw);
+                orientText.setRotation(mRoll);
+                orientText.setRotationX(mPitch);
+                orientText.setRotationY(mYaw);
 
-                // Power(un)locking should take no more than 4 seconds
-                if (powerLockingStage != 0 && powerLockingStage != 3 &&
-                        System.nanoTime() > powerLockingStart + 4000000000L) {
-                    powerLockingStage = 0;
-                    if (!powerLocked) {
-                        poseText.setTextColor(Color.BLACK);
-                    }
-                    else {
-                        poseText.setTextColor(Color.RED);
-                    }
 
-                }
 
-                if (active && powerLockingStage == 0 &&
-                        (curPose == Pose.FINGERS_SPREAD || curPose == Pose.FIST)) {
-                    mSeekBar.setProgress(mSeekBar.getProgress() + roll - prevRoll);
-                }
-
-                // Power(un)locking works in three stages, hold thumb to pinky when moving your
-                // arm from bottom to top and then spread your fingers.
-                if (curPose == Pose.THUMB_TO_PINKY) {
-                    if (pitch > 50) {
-                        powerLockingStage = 1;
-                        powerLockingStart = System.nanoTime();
-                        poseText.setTextColor(Color.BLUE);
-
-                    }
-                    else if (powerLockingStage == 1 && pitch < -50) {
-                        powerLockingStage = 2;
-                        poseText.setTextColor(Color.YELLOW);
-
-                    }
-                }
-                else if (powerLockingStage == 2 && curPose == Pose.FINGERS_SPREAD) {
-                    powerLockingStage = 3;
-                    powerLocked = !powerLocked;
-                    active = !powerLocked;
-                    if (powerLocked) {
-                        poseText.setTextColor(Color.RED);
-                        myo.vibrate(Myo.VibrationType.LONG);
-
-                    }
-                    else {
-                        poseText.setTextColor(Color.BLACK);
-                        myo.vibrate(Myo.VibrationType.SHORT);
-                        myo.vibrate(Myo.VibrationType.SHORT);
-                    }
+                if (mActive && mCurPose == Pose.FIST &&
+                        (mRoll > mPrevRoll && mRoll - mPrevRoll < 100 ||
+                        mRoll < mPrevRoll && mPrevRoll - mRoll < 100)) {
+                    mVlcFragment.changeVolume(mRoll - mPrevRoll);
                 }
             }
         };
