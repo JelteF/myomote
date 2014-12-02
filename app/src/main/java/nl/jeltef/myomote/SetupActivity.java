@@ -75,8 +75,6 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
     ViewPager mViewPager;
     private final static String TAG = "SetupActivity";
     private static DeviceListener mListener;
-    private static SeekBar mSeekBar;
-    private static TextView percentText;
     private static TextView poseText;
     private static TextView orientText;
     private static TextView accelText;
@@ -126,7 +124,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         // Inflate the menu; this adds items to the action bar if it is present.
-        getMenuInflater().inflate(R.menu.menu_setup, menu);
+        //getMenuInflater().inflate(R.menu.menu_setup, menu);
         return true;
     }
 
@@ -226,28 +224,9 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                                  Bundle savedInstanceState) {
             View view = inflater.inflate(R.layout.fragment_myo_setup, container, false);
 
-            mSeekBar = (SeekBar) view.findViewById(R.id.seek_bar);
-            percentText = (TextView) view.findViewById(R.id.percent_text);
             poseText = (TextView) view.findViewById(R.id.current_pose);
             orientText = (TextView) view.findViewById(R.id.orientation_text);
             accelText = (TextView) view.findViewById(R.id.accelerometer_text);
-
-            mSeekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-                @Override
-                public void onProgressChanged(SeekBar seekBar, int i, boolean b) {
-                    percentText.setText("" + i);
-                }
-
-                @Override
-                public void onStartTrackingTouch(SeekBar seekBar) {
-
-                }
-
-                @Override
-                public void onStopTrackingTouch(SeekBar seekBar) {
-
-                }
-            });
 
 
             Hub hub = Hub.getInstance();
