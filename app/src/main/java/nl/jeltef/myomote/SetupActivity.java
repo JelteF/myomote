@@ -78,7 +78,6 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
     private static TextView poseText;
     private static TextView orientText;
     private static TextView accelText;
-    private VlcFragment mVlcFragment;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -176,8 +175,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                 return MyoSetupFragment.newInstance();
             }
             else {
-                mVlcFragment = VlcFragment.newInstance();
-                return mVlcFragment;
+                return VlcFragment.newInstance();
             }
         }
 
@@ -198,6 +196,11 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             }
             return null;
         }
+    }
+
+    private String getFragmentTag(int fragmentPosition)
+    {
+        return "android:switcher:" + R.id.pager + ":" + fragmentPosition;
     }
 
     /**
@@ -723,23 +726,23 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                 if (mActive) {
                     switch (mCurPose) {
                         case FIST:
-                            mVlcFragment.changeVolume(rollDifference());
+                            getVlcFragment().changeVolume(rollDifference());
                             actionDone();
                             break;
                         case WAVE_IN:
                             if (canDoNewAction()) {
-                                mVlcFragment.rewind();
+                                getVlcFragment().rewind();
                                 actionDone();
                             }
                         case WAVE_OUT:
                             if (canDoNewAction()) {
-                                mVlcFragment.fastForward();
+                                getVlcFragment().fastForward();
                                 actionDone();
                             }
                             break;
                         case FINGERS_SPREAD:
                             if (canDoNewAction() && !mGestureActionDone) {
-                                mVlcFragment.togglePlay();
+                                getVlcFragment().togglePlay();
                                 actionDone();
                             }
                             break;
@@ -772,17 +775,21 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
         this.startActivity(intent);
     }
 
+    public VlcFragment getVlcFragment() {
+        return (VlcFragment) getFragmentManager().findFragmentByTag(getFragmentTag(1));
+    }
+
     public void findVLC(View view) {
         Log.d(TAG, "Searching for VLC");
-        mVlcFragment.startSweep();
+        getVlcFragment().startSweep();
     }
 
     public void connectVLC(View view) {
-        mVlcFragment.connect();
+        getVlcFragment().connect();
     }
 
     public void clickVlcFragment(View view) {
-        mVlcFragment.click(view);
+        getVlcFragment().click(view);
     }
 
 }
