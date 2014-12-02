@@ -419,7 +419,12 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                 @Override
                 public void run() {
                     sendStatusCommand("", "");
-                    getView().postDelayed(mUpdateTask, UPDATE_INTERVAL);
+                    try {
+                        getView().postDelayed(mUpdateTask, UPDATE_INTERVAL);
+                    }
+                    catch (NullPointerException e) {
+                        e.getStackTrace();
+                    }
                 }
             };
 
@@ -646,10 +651,10 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             private int mYaw;
 
             private boolean mActive = false;
-            private long mActiveSince = 0;
             private Pose mCurPose = Pose.UNKNOWN;
             private boolean mGestureActionDone = false;
             private long mTimeOfLastAction = 0;
+            private long timeBetweenActions = 700000000L;
 
 
             public void onConnect(Myo myo, long timestamp) {
@@ -666,7 +671,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                 poseText.setText("Pose: " + pose);
 
                 if (mActive && pose == Pose.FINGERS_SPREAD) {
-                    mVlcFragment.togglePlay();
+
                 }
 
 
@@ -736,13 +741,48 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                 orientText.setRotationX(mPitch);
                 orientText.setRotationY(mYaw);
 
-
-
-                if (mActive && mCurPose == Pose.FIST &&
-                        (mRoll > mPrevRoll && mRoll - mPrevRoll < 100 ||
-                        mRoll < mPrevRoll && mPrevRoll - mRoll < 100)) {
-                    mVlcFragment.changeVolume(mRoll - mPrevRoll);
+                if (mActive) {
+                    switch (mCurPose) {
+                        case FIST:
+                            mVlcFragment.changeVolume(rollDifference());
+                            actionDone();
+                            break;
+                        case WAVE_IN:
+                            if (canDoNewAction()) {
+                                mVlcFragment.rewind();
+                                actionDone();
+                            }
+                        case WAVE_OUT:
+                            if (canDoNewAction()) {
+                                mVlcFragment.fastForward();
+                                actionDone();
+                            }
+                            break;
+                        case FINGERS_SPREAD:
+                            if (canDoNewAction() && !mGestureActionDone) {
+                                mVlcFragment.togglePlay();
+                                actionDone();
+                            }
+                            break;
+                    }
                 }
+            }
+
+            private void actionDone() {
+                mGestureActionDone = true;
+                mTimeOfLastAction = System.nanoTime();
+            }
+
+            private boolean canDoNewAction() {
+                return mTimeOfLastAction + timeBetweenActions < System.nanoTime();
+            }
+
+            private int rollDifference() {
+                if (mRoll > mPrevRoll && mRoll - mPrevRoll < 100 ||
+                        mRoll < mPrevRoll && mPrevRoll - mRoll < 100) {
+                    return mRoll - mPrevRoll;
+                }
+                return 0;
             }
         };
     }
