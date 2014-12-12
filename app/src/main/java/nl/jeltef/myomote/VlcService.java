@@ -27,6 +27,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 
+// This service takes care of the communication and connection with VLC.
 public class VlcService extends Service implements PortSweeper.Callback {
     private final static String TAG = "VlcService";
 
@@ -39,20 +40,14 @@ public class VlcService extends Service implements PortSweeper.Callback {
     private long mLastRequest = 0;
     private int mVolumeDifferenceTotal = 0;
 
-    private final static long REQUEST_DISTANCE = 100000000;
+    private final static long REQUEST_DISTANCE = 100000000; //100ms
     public Callback mCallback = null;
 
-    /**
-     * Begin GPLv3 code
-     */
     private PortSweeper mPortSweeper;
     private String mPath;
     private int mPort;
     private int mWorkers;
     public static final int DEFAULT_WORKERS = 16;
-    /**
-     * End GPLv3 code
-     */
 
     private final IBinder mBinder = new LocalBinder();
 
@@ -77,14 +72,13 @@ public class VlcService extends Service implements PortSweeper.Callback {
 
     @Override
     public IBinder onBind(Intent intent) {
-        Log.d(TAG, "Binding");
-        Log.d(TAG, "" + mConnected);
         return mBinder;
     }
 
+    // If the OS killed the service the setup will have to be done again anyway
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
-        return START_STICKY;
+        return START_NOT_STICKY;
     }
 
 
@@ -96,10 +90,10 @@ public class VlcService extends Service implements PortSweeper.Callback {
         mWorkers = DEFAULT_WORKERS;
 
         mPortSweeper = createPortSweeper(this);
-
     }
 
 
+    // Only care about the first host
     @Override
     public void onHostFound(String hostname, int responseCode) {
         mHostName = hostname;
@@ -112,7 +106,6 @@ public class VlcService extends Service implements PortSweeper.Callback {
     public void onProgress(int progress, int max) {
         if (progress == max) {
             Log.d(TAG, "Finished sweeping");
-
         }
     }
 
@@ -125,12 +118,15 @@ public class VlcService extends Service implements PortSweeper.Callback {
         return mConnected;
     }
 
+    // Check if the last request was long enough ago not to flood VLC with
+    // requests.
     public boolean requestAllowed() {
         return (mLastRequest + REQUEST_DISTANCE) < System.nanoTime();
     }
 
+    // Connecting is really just a flag and it will be set to false once a
+    // request fails, since apparently it wasn't really connected.
     public void connect(String password) {
-        //TODO: Broadcast something
         mPassword = Uri.encode(password);
         mBaseUrl = "http://" + mHostName + ":" + mPort + mPath;
         mConnected = true;
@@ -139,6 +135,7 @@ public class VlcService extends Service implements PortSweeper.Callback {
         }
     }
 
+    // Wrappers for the actueal api commands
     public void togglePlay() {
         sendStatusCommand("pl_pause", "");
     }
@@ -159,10 +156,13 @@ public class VlcService extends Service implements PortSweeper.Callback {
         sendStatusCommand("pl_previous", "val=-" + mSeekTime);
     }
 
+
     public void changeVolume(int difference) {
         String param;
         mVolumeDifferenceTotal += difference;
 
+        // Do the volume changes in batches by summing the different calls.
+        // This is needed to handle the change if calls are made to fast
         if (!requestAllowed()) {
             return;
         }
@@ -190,6 +190,7 @@ public class VlcService extends Service implements PortSweeper.Callback {
 
     }
 
+    // Request take long so they have to be done in their own thread
     class SendRequest extends AsyncTask<HttpGet, Void, JSONObject> {
 
         protected JSONObject doInBackground(HttpGet... request) {
@@ -216,11 +217,9 @@ public class VlcService extends Service implements PortSweeper.Callback {
 
                 return result;
             } catch (IOException e) {
-                //stopCheckingStatus();
                 e.printStackTrace();
                 return null;
             } catch (JSONException e) {
-                //stopCheckingStatus();
                 e.printStackTrace();
                 return null;
             }
@@ -235,6 +234,8 @@ public class VlcService extends Service implements PortSweeper.Callback {
                     mCallback.onUpdate(result);
                 }
                 else {
+                    // Something went wrong with the request so reconnecting is
+                    // needed
                     mCallback.onDisconnected();
                 }
             }
@@ -242,7 +243,7 @@ public class VlcService extends Service implements PortSweeper.Callback {
     }
 
     /**
-     * Begin GPLv3 code
+     * Begin code from android-vlc-remote
      */
     private static byte[] toByteArray(int i) {
         int i4 = (i >> 24) & 0xFF;
@@ -271,6 +272,7 @@ public class VlcService extends Service implements PortSweeper.Callback {
         }
         return null;
     }
+
     private byte[] getIpAddress() {
         WifiInfo info = getConnectionInfo();
         if (info != null) {
@@ -289,6 +291,6 @@ public class VlcService extends Service implements PortSweeper.Callback {
         }
     }
     /**
-     * End GPLv3 code
+     * End code from android-vlc-remote
      */
 }

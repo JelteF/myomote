@@ -23,6 +23,9 @@ import com.thalmic.myo.XDirection;
 
 import java.text.DecimalFormat;
 
+
+// This class takes care of the communication with the Myo and reacting to the
+// users movements.
 public class MyoService extends Service {
     public MyoService() {
     }
@@ -36,6 +39,7 @@ public class MyoService extends Service {
 
     private Arm mArm = Arm.UNKNOWN;
     private XDirection mXDirection = XDirection.UNKNOWN;
+    private Pose mCurPose = Pose.UNKNOWN;
 
     private int mRollOffset = 0;
     private int mRoll;
@@ -44,7 +48,6 @@ public class MyoService extends Service {
     private int mYaw;
 
     private boolean mActive = false;
-    private Pose mCurPose = Pose.UNKNOWN;
     private boolean mGestureActionDone = false;
     private long mTimeOfLastAction = 0;
     private long timeBetweenActions = 700000000L;
@@ -62,11 +65,18 @@ public class MyoService extends Service {
         }
     }
 
-
     @Override
     public IBinder onBind(Intent intent) {
         return mBinder;
     }
+
+
+    // If the OS killed the service the setup will have to be done again anyway
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        return START_NOT_STICKY;
+    }
+
 
     @Override
     public void onCreate() {
@@ -129,8 +139,9 @@ public class MyoService extends Service {
             mGestureActionDone = false;
         }
 
-        // onArmRecognized() is called whenever Myo has recognized a setup gesture after someone has put it on their
-        // arm. This lets Myo know which arm it's on and which way it's facing.
+        // onArmRecognized() is called whenever Myo has recognized a setup
+        // gesture after someone has put it on their arm. This lets Myo know
+        // which arm it's on and which way it's facing.
         @Override
         public void onArmSync(Myo myo, long timestamp, Arm arm, XDirection xDirection) {
             mArm = arm;
@@ -138,9 +149,10 @@ public class MyoService extends Service {
             mRollOffset = mRoll - 9; //Save initial mRoll plus tiny offset for turning arm
         }
 
-        // onArmLost() is called whenever Myo has detected that it was moved from a stable position on a person's arm after
-        // it recognized the arm. Typically this happens when someone takes Myo off of their arm, but it can also happen
-        // when Myo is moved around on the arm.
+        // onArmLost() is called whenever Myo has detected that it was moved
+        // from a stable position on a person's arm after it recognized the
+        // arm. Typically this happens when someone takes Myo off of their arm,
+        // but it can also happen when Myo is moved around on the arm.
         @Override
         public void onArmUnsync(Myo myo, long timestamp) {
             mArm = Arm.UNKNOWN;
@@ -150,9 +162,13 @@ public class MyoService extends Service {
 
         @Override
         public void onAccelerometerData(Myo myo, long timestamp, Vector3 vec) {
+            // Show text if activity is running
             if (mFragment != null) {
                 mFragment.mAccelText.setText("Acc: " + vec.length());
             }
+
+            // Lock myo if THUMB_TO_PINKY gesture is done and it is unlocked.
+            // Unlock it if the same is done and the myo is being moved fast.
             if (mCurPose == Pose.THUMB_TO_PINKY && !mGestureActionDone && (vec.length() > 2 || mActive)) {
                 if (!mActive) {
                     myo.vibrate(Myo.VibrationType.SHORT);
@@ -175,10 +191,10 @@ public class MyoService extends Service {
         }
 
 
+        // Most of the actions are done here. This is because orientation
+        // updates quite often.
         @Override
         public void onOrientationData(Myo myo, long timestamp, Quaternion rotation) {
-            DecimalFormat twoDForm = new DecimalFormat("#.##");
-
             mPrevRoll = mRoll;
             mRoll = (int) Math.toDegrees(Quaternion.roll(rotation)) - mRollOffset;
             mPitch = (int) (Math.toDegrees(Quaternion.pitch(rotation)));
@@ -225,7 +241,6 @@ public class MyoService extends Service {
             }
         }
 
-
         private void actionDone() {
             mGestureActionDone = true;
             mTimeOfLastAction = System.nanoTime();
@@ -235,6 +250,8 @@ public class MyoService extends Service {
             return mTimeOfLastAction + timeBetweenActions < System.nanoTime();
         }
 
+        // Count roll as 0 if the difference is to big, this happens when it
+        // moves over the 180 to -180 degrees edge in the degree range.
         private int rollDifference() {
             if (mRoll > mPrevRoll && mRoll - mPrevRoll < 100 ||
                     mRoll < mPrevRoll && mPrevRoll - mRoll < 100) {
@@ -245,7 +262,7 @@ public class MyoService extends Service {
     };
 
 
-    /** Defines callbacks for service binding, passed to bindService() */
+    /** Defines callbacks for binding to VlcService, passed to bindService() */
     private ServiceConnection mConnection = new ServiceConnection() {
 
         @Override

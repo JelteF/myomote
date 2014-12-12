@@ -189,7 +189,8 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
     }
 
     /**
-     * A placeholder fragment containing a simple view.
+     * The fragment to show the Myo related stuff, like current position and
+     * rotational values.
      */
     public static class MyoSetupFragment extends Fragment {
         public TextView mPoseText;
@@ -228,6 +229,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             return view;
         }
 
+        // Bind to service
         @Override
         public void onStart() {
             Log.d(TAG, "starting fragment");
@@ -237,6 +239,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             this.getActivity().bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
         }
 
+        // Unbind from service
         @Override
         public void onStop() {
             Log.d(TAG, "stopping fragment");
@@ -258,6 +261,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                 MyoService.LocalBinder binder = (MyoService.LocalBinder) b;
                 Log.d(TAG, "Connected to VLC service");
                 mService = binder.getService();
+                // Set fragment so values can be changed from inside the service
                 mService.setFragment(MyoSetupFragment.this);
 
                 mBound = true;
@@ -292,12 +296,10 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
 
 
         private final static int UPDATE_INTERVAL = 500; //half a second
-        private final static long REQUEST_DISTANCE = 60000000;
 
         Runnable mUpdateTask;
         /**
-         * Returns a new instance of this fragment for the given section
-         * number.
+         * Returns a new instance of this fragment.
          */
         public static VlcFragment newInstance() {
             VlcFragment fragment = new VlcFragment();
@@ -413,6 +415,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             Log.d(TAG, "stopping fragment");
             super.onStop();
             if (mBound) {
+                stopCheckingStatus();
                 mService.mCallback = null;
                 this.getActivity().unbindService(mConnection);
                 mBound = false;
@@ -477,6 +480,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
 
         public void onUpdate(JSONObject result) {
             if (result == null) {
+                // Something went wrong stop checking status
                 stopCheckingStatus();
                 return;
             }
@@ -522,13 +526,14 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
 
     }
 
-
+    // Open the ScanActivity from the Myo SDK
     public void pairMyo(View view) {
         Log.d(TAG, "Searching for Myo");
         Intent intent = new Intent(this, ScanActivity.class);
         this.startActivity(intent);
     }
 
+    // Helper to get the VlcFragment instance
     public VlcFragment getVlcFragment() {
         return (VlcFragment) getFragmentManager().findFragmentByTag(getFragmentTag(1));
     }
