@@ -1,8 +1,5 @@
 package nl.jeltef.myomote;
 
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
 import java.text.DecimalFormat;
 import java.util.Locale;
 import java.util.concurrent.TimeUnit;
@@ -12,14 +9,12 @@ import android.app.ActionBar;
 import android.app.Fragment;
 import android.app.FragmentManager;
 import android.app.FragmentTransaction;
+import android.content.ComponentName;
+import android.content.Context;
 import android.content.Intent;
+import android.content.ServiceConnection;
 import android.graphics.Color;
-import android.net.Uri;
-import android.net.wifi.SupplicantState;
-import android.net.wifi.WifiInfo;
-import android.net.wifi.WifiManager;
-import android.os.AsyncTask;
-import android.os.Looper;
+import android.os.IBinder;
 import android.support.v13.app.FragmentPagerAdapter;
 import android.os.Bundle;
 import android.support.v4.view.ViewPager;
@@ -45,16 +40,8 @@ import com.thalmic.myo.Vector3;
 import com.thalmic.myo.XDirection;
 import com.thalmic.myo.scanner.ScanActivity;
 
-import org.apache.http.HttpResponse;
-import org.apache.http.auth.UsernamePasswordCredentials;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.auth.BasicScheme;
-import org.apache.http.impl.client.DefaultHttpClient;
 import org.json.JSONException;
 import org.json.JSONObject;
-import org.json.JSONTokener;
-import org.peterbaldwin.vlcremote.sweep.PortSweeper;
 
 
 public class SetupActivity extends Activity implements ActionBar.TabListener {
@@ -78,6 +65,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
     private static TextView poseText;
     private static TextView orientText;
     private static TextView accelText;
+
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -118,6 +106,8 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                             .setTabListener(this));
         }
     }
+
+
 
 
     @Override
@@ -257,45 +247,22 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             this.startActivity(intent);
         }
     }
-    /**
-     * Begin GPLv3 code
-     */
-    private WifiInfo getConnectionInfo() {
-        Object service = getSystemService(WIFI_SERVICE);
-        WifiManager manager = (WifiManager) service;
-        WifiInfo info = manager.getConnectionInfo();
-        if (info != null) {
-            SupplicantState state = info.getSupplicantState();
-            if (state.equals(SupplicantState.COMPLETED)) {
-                return info;
-            }
-        }
-        return null;
-    }
-    /**
-     * End GPLv3 code
-     */
 
-    /**
-     * A placeholder fragment containing a simple view.
-     */
-    public static class VlcFragment extends Fragment implements PortSweeper.Callback {
-        private String mHostName;
-        private String mPassword;
-        private String mBaseUrl;
-        private String mSeekTime = "10";
 
+    public static class VlcFragment extends Fragment implements VlcService.Callback {
         private EditText mPasswordField;
         private TextView mIpAddressText;
         private SeekBar mTimeSeekBar;
         private TextView mTimeText;
         private SeekBar mVolumeSeekBar;
 
-        private boolean mConnected = false;
+        private String mHostname;
         private boolean mChangingTime = false;
         private boolean mChangingVolume = false;
         long mLastRequest = 0;
-        int mVolumeDifferenceTotal = 0;
+        public VlcService mService;
+        private boolean mBound = false;
+
 
 
 
@@ -325,11 +292,6 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                                  Bundle savedInstanceState) {
             final View view = inflater.inflate(R.layout.fragment_vlc_setup, container, false);
 
-            mPort = 8080;
-            mPath = "/requests/";
-            mWorkers = DEFAULT_WORKERS;
-
-            mPortSweeper = createPortSweeper(this);
             mPasswordField = (EditText) view.findViewById(R.id.passwordField);
             mIpAddressText = (TextView) view.findViewById(R.id.ipAddressText);
             mTimeSeekBar = (SeekBar) view.findViewById(R.id.timeSeekBar);
@@ -357,7 +319,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                     if (fromUser) {
                         // Don't overload VLC with requests.
                         if (requestAllowed()) {
-                            sendStatusCommand("seek", "val=" + full_seconds);
+                            mService.sendStatusCommand("seek", "val=" + full_seconds);
                         }
                     }
                 }
@@ -378,8 +340,8 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                 public void onProgressChanged(SeekBar seekBar, int i, boolean fromUser) {
                     if (fromUser) {
                         // Don't overload VLC with requests.
-                        if (requestAllowed()) {
-                            sendStatusCommand("volume", "val=" + i);
+                        if (mService.requestAllowed()) {
+                            mService.sendStatusCommand("volume", "val=" + i);
                         }
 
                     }
@@ -396,11 +358,10 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                 }
             });
 
-            mUpdateTask = new Runnable()
-            {
+            mUpdateTask = new Runnable() {
                 @Override
                 public void run() {
-                    sendStatusCommand("", "");
+                    mService.sendStatusCommand("", "");
                     try {
                         getView().postDelayed(mUpdateTask, UPDATE_INTERVAL);
                     }
@@ -413,99 +374,53 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             return view;
         }
 
+        @Override
+        public void onStart() {
+            Log.d(TAG, "starting fragment");
+
+            super.onStart();
+            Intent intent = new Intent(this.getActivity(), VlcService.class);
+            this.getActivity().bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
+        }
+
+        @Override
+        public void onStop() {
+            Log.d(TAG, "stopping fragment");
+            super.onStop();
+            if (mBound) {
+                mService.mCallback = null;
+                this.getActivity().unbindService(mConnection);
+                mBound = false;
+            }
+        }
         private boolean requestAllowed() {
             return (mLastRequest + REQUEST_DISTANCE) < System.nanoTime();
         }
 
-        @Override
-        public void onHostFound(String hostname, int responseCode) {
-            mHostName = hostname;
-            mIpAddressText.setText("Found at " + hostname + ":8080");
-        }
-
-        @Override
-        public void onProgress(int progress, int max) {
-            if (progress == max) {
-                Log.d(TAG, "Finished sweeping");
-
-            }
-        }
-
         public void connect() {
-            mPassword = Uri.encode(mPasswordField.getText().toString());
-            mBaseUrl = "http://" + mHostName + ":" + mPort + mPath;
-            //mPasswordField.setText(mBaseUrl);
-            startCheckingStatus();
-            mConnected = true;
-        }
-
-        public void togglePlay() {
-            sendStatusCommand("pl_pause", "");
-        }
-
-        public void fastForward() {
-            sendStatusCommand("seek", "val=+" + mSeekTime);
-        }
-
-        public void rewind() {
-            sendStatusCommand("seek", "val=-" + mSeekTime);
-        }
-
-        public void next() {
-            sendStatusCommand("pl_next", "val=-" + mSeekTime);
-        }
-
-        public void changeVolume(int difference) {
-            String param;
-            mVolumeDifferenceTotal += difference;
-
-            if (!requestAllowed()) {
-                return;
-            }
-
-            mVolumeDifferenceTotal *= 5;
-            if (mVolumeDifferenceTotal >= 0) {
-                param = "+" + mVolumeDifferenceTotal;
-            }
-            else {
-                param = "" + mVolumeDifferenceTotal;
-            }
-
-            sendStatusCommand("volume", "val=" + param);
-            mVolumeDifferenceTotal = 0;
-        }
-
-        private void previous() {
-            sendStatusCommand("pl_previous", "val=-" + mSeekTime);
-        }
-
-        private void sendStatusCommand(String command, String params) {
-            HttpGet request = new HttpGet(mBaseUrl + "status.json?command=" + command +
-                    "&" + params);
-            request.addHeader(BasicScheme.authenticate(
-                    new UsernamePasswordCredentials("", mPassword), "UTF-8", false));
-            if (mConnected) {
-                new SendRequest().execute(request);
-            }
-
+            mService.connect(mPasswordField.getText().toString());
         }
 
         public void click(View view) {
+            if (!mBound) {
+                return;
+            }
+
             switch(view.getId()) {
                 case R.id.playButton:
-                    togglePlay();
+                    mService.togglePlay();
                     break;
                 case R.id.forwardButton:
-                    fastForward();
+                    mService.fastForward();
                     break;
                 case R.id.rewindButton:
-                    rewind();
+                    mService.rewind();
                     break;
                 case R.id.nextButton:
-                    next();
+                    mService.next();
                     break;
                 case R.id.previousButton:
-                    previous();
+                    mService.previous();
                     break;
                 default:
                     Log.d(TAG, "Something unknown was clicked, it had id: " + view.getId());
@@ -523,101 +438,66 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
             getView().removeCallbacks(mUpdateTask);
         }
 
-        class SendRequest extends AsyncTask<HttpGet, Void, JSONObject> {
+        public void onHostFound(String hostname) {
+            mHostname = hostname;
+            mIpAddressText.setText("Found at " + mHostname);
+        }
 
-            protected JSONObject doInBackground(HttpGet... request) {
+        public void onConnected() {
+            mIpAddressText.setText("Connected to " + mHostname);
+            startCheckingStatus();
+        }
 
-                mLastRequest = System.nanoTime();
+        public void onDisconnected() {
+            mIpAddressText.setText("Disconnected");
+            stopCheckingStatus();
+        }
 
-                HttpClient client = new DefaultHttpClient();
-                //Log.d(TAG, "Sending request to: " + request[0].getURI());
-
-                try {
-                    HttpResponse response = client.execute(request[0]);
-                    //Log.d(TAG, "Request status code: " + response.getStatusLine().getStatusCode());
-
-                    // Source: http://stackoverflow.com/a/2845612/2570866
-                    BufferedReader reader = new BufferedReader(new InputStreamReader(response.getEntity().getContent(), "UTF-8"));
-                    StringBuilder builder = new StringBuilder();
-                    for (String line = null; (line = reader.readLine()) != null;) {
-                        builder.append(line).append("\n");
-                    }
-
-                    JSONTokener tokener = new JSONTokener(builder.toString());
-                    JSONObject result = new JSONObject(tokener);
-
-                    return result;
-                } catch (IOException e) {
-                    stopCheckingStatus();
-                    e.printStackTrace();
-                    return null;
-                } catch (JSONException e) {
-                    stopCheckingStatus();
-                    e.printStackTrace();
-                    return null;
+        public void onUpdate(JSONObject result) {
+            if (result == null) {
+                stopCheckingStatus();
+                return;
+            }
+            try {
+                if (!mChangingVolume)
+                    mVolumeSeekBar.setProgress(result.getInt("volume"));
+                if (!mChangingTime) {
+                    mTimeSeekBar.setMax(result.getInt("length"));
+                    mTimeSeekBar.setProgress(result.getInt("time"));
                 }
-            }
 
-            protected void onPostExecute(JSONObject result) {
-                if (result == null) {
-                    return;
+            } catch (JSONException e) {
+                stopCheckingStatus();
+                e.printStackTrace();
+            }
+        }
+
+        /** Defines callbacks for service binding, passed to bindService() */
+        private ServiceConnection mConnection = new ServiceConnection() {
+
+            @Override
+            public void onServiceConnected(ComponentName className,
+                                           IBinder b) {
+                // We've bound to VlcService, cast the IBinder and get VlcService instance
+                VlcService.LocalBinder binder = (VlcService.LocalBinder) b;
+                Log.d(TAG, "Connected to VLC service");
+                mService = binder.getService();
+                if (mService.addCallback(VlcFragment.this)) {
+                    mHostname = mService.mHostName;
+                    mPasswordField.setText(mService.mPassword);
+                    onConnected();
                 }
-                try {
-                    if (!mChangingVolume)
-                        mVolumeSeekBar.setProgress(result.getInt("volume"));
-                    if (!mChangingTime) {
-                        mTimeSeekBar.setMax(result.getInt("length"));
-                        mTimeSeekBar.setProgress(result.getInt("time"));
-                    }
 
-                } catch (JSONException e) {
-                    stopCheckingStatus();
-                    e.printStackTrace();
-                }
+                mBound = true;
             }
-        }
 
-        /**
-         * Start GPLv3 code
-         */
-        private PortSweeper mPortSweeper;
-        private String mPath;
-        private int mPort;
-        private int mWorkers;
-        public static final int DEFAULT_WORKERS = 16;
-
-        private static byte[] toByteArray(int i) {
-            int i4 = (i >> 24) & 0xFF;
-            int i3 = (i >> 16) & 0xFF;
-            int i2 = (i >> 8) & 0xFF;
-            int i1 = i & 0xFF;
-            return new byte[] {
-                    (byte) i1, (byte) i2, (byte) i3, (byte) i4
-            };
-        }
-
-
-        private PortSweeper createPortSweeper(PortSweeper.Callback callback) {
-            return new PortSweeper(mPort, mPath, mWorkers, callback, Looper.myLooper());
-        }
-
-        private byte[] getIpAddress() {
-            WifiInfo info = getSetupActivity().getConnectionInfo();
-            if (info != null) {
-                return toByteArray(info.getIpAddress());
+            @Override
+            public void onServiceDisconnected(ComponentName arg0) {
+                mBound = false;
+                mService.mCallback = null;
             }
-            return null;
-        }
+        };
 
-        public void startSweep() {
-            byte[] ipAddress = getIpAddress();
-            if (ipAddress != null) {
-                mPortSweeper.sweep(ipAddress);
-            }
-        }
-        /**
-         * End GPLv3 code
-         */
     }
 
 
@@ -726,23 +606,23 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                 if (mActive) {
                     switch (mCurPose) {
                         case FIST:
-                            getVlcFragment().changeVolume(rollDifference());
+                            getVlcFragment().mService.changeVolume(rollDifference());
                             actionDone();
                             break;
                         case WAVE_IN:
                             if (canDoNewAction()) {
-                                getVlcFragment().rewind();
+                                getVlcFragment().mService.rewind();
                                 actionDone();
                             }
                         case WAVE_OUT:
                             if (canDoNewAction()) {
-                                getVlcFragment().fastForward();
+                                getVlcFragment().mService.fastForward();
                                 actionDone();
                             }
                             break;
                         case FINGERS_SPREAD:
                             if (canDoNewAction() && !mGestureActionDone) {
-                                getVlcFragment().togglePlay();
+                                getVlcFragment().mService.togglePlay();
                                 actionDone();
                             }
                             break;
@@ -781,7 +661,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
 
     public void findVLC(View view) {
         Log.d(TAG, "Searching for VLC");
-        getVlcFragment().startSweep();
+        getVlcFragment().mService.startSweep();
     }
 
     public void connectVLC(View view) {
@@ -791,5 +671,4 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
     public void clickVlcFragment(View view) {
         getVlcFragment().click(view);
     }
-
 }
