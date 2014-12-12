@@ -8,6 +8,9 @@ import android.content.Intent;
  */
 public class MyomoteApplication extends Application {
     public void onCreate() {
+
         startService(new Intent(this, VlcService.class));
+        startService(new Intent(this, MyoService.class));
+
     }
 }

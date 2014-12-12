@@ -28,10 +28,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 
 public class VlcService extends Service implements PortSweeper.Callback {
-    public enum Action {
-        TOGGLE_PLAY, CONNECT, SWEEP, NEXT, PREVIOUS
-    }
-
     private final static String TAG = "VlcService";
 
     public String mHostName;
@@ -43,7 +39,7 @@ public class VlcService extends Service implements PortSweeper.Callback {
     private long mLastRequest = 0;
     private int mVolumeDifferenceTotal = 0;
 
-    private final static long REQUEST_DISTANCE = 60000000;
+    private final static long REQUEST_DISTANCE = 100000000;
     public Callback mCallback = null;
 
     /**

@@ -61,10 +61,6 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
      */
     ViewPager mViewPager;
     private final static String TAG = "SetupActivity";
-    private static DeviceListener mListener;
-    private static TextView poseText;
-    private static TextView orientText;
-    private static TextView accelText;
 
 
     @Override
@@ -188,8 +184,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
         }
     }
 
-    private String getFragmentTag(int fragmentPosition)
-    {
+    private String getFragmentTag(int fragmentPosition) {
         return "android:switcher:" + R.id.pager + ":" + fragmentPosition;
     }
 
@@ -197,6 +192,15 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
      * A placeholder fragment containing a simple view.
      */
     public static class MyoSetupFragment extends Fragment {
+        public TextView mPoseText;
+        public TextView mOrientText;
+        public TextView mAccelText;
+
+        private static final String TAG = "MyoFragment";
+
+
+        public MyoService mService;
+        private boolean mBound = false;
         /**
          * Returns a new instance of this fragment for the given section
          * number.
@@ -217,35 +221,54 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                                  Bundle savedInstanceState) {
             View view = inflater.inflate(R.layout.fragment_myo_setup, container, false);
 
-            poseText = (TextView) view.findViewById(R.id.current_pose);
-            orientText = (TextView) view.findViewById(R.id.orientation_text);
-            accelText = (TextView) view.findViewById(R.id.accelerometer_text);
-
-
-            Hub hub = Hub.getInstance();
-            SetupActivity activity = (SetupActivity) this.getActivity();
-            if (!hub.init(activity)) {
-                Log.e(TAG, "Could not initialize hub");
-                activity.finish();
-                return view;
-            }
-            activity.createMyoListener();
-
-            Hub.getInstance().addListener(mListener);
-            Hub.getInstance().attachToAdjacentMyo();
-
+            mPoseText = (TextView) view.findViewById(R.id.current_pose);
+            mOrientText = (TextView) view.findViewById(R.id.orientation_text);
+            mAccelText = (TextView) view.findViewById(R.id.accelerometer_text);
 
             return view;
-
-
-
         }
 
-        public void pairMyo(View view) {
-            Log.e(TAG, "Searching for Myo");
-            Intent intent = new Intent(this.getActivity(), ScanActivity.class);
-            this.startActivity(intent);
+        @Override
+        public void onStart() {
+            Log.d(TAG, "starting fragment");
+
+            super.onStart();
+            Intent intent = new Intent(this.getActivity(), MyoService.class);
+            this.getActivity().bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
         }
+
+        @Override
+        public void onStop() {
+            Log.d(TAG, "stopping fragment");
+            super.onStop();
+            if (mBound) {
+                mService.unsetFragment();
+                this.getActivity().unbindService(mConnection);
+                mBound = false;
+            }
+        }
+
+        /** Defines callbacks for service binding, passed to bindService() */
+        private ServiceConnection mConnection = new ServiceConnection() {
+
+            @Override
+            public void onServiceConnected(ComponentName className,
+                                           IBinder b) {
+                // We've bound to VlcService, cast the IBinder and get VlcService instance
+                MyoService.LocalBinder binder = (MyoService.LocalBinder) b;
+                Log.d(TAG, "Connected to VLC service");
+                mService = binder.getService();
+                mService.setFragment(MyoSetupFragment.this);
+
+                mBound = true;
+            }
+
+            @Override
+            public void onServiceDisconnected(ComponentName arg0) {
+                mBound = false;
+            }
+        };
+
     }
 
 
@@ -262,6 +285,8 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
         long mLastRequest = 0;
         public VlcService mService;
         private boolean mBound = false;
+
+        private static final String TAG = "VlcFragment";
 
 
 
@@ -318,7 +343,7 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
 
                     if (fromUser) {
                         // Don't overload VLC with requests.
-                        if (requestAllowed()) {
+                        if (mService.requestAllowed()) {
                             mService.sendStatusCommand("seek", "val=" + full_seconds);
                         }
                     }
@@ -392,9 +417,6 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
                 this.getActivity().unbindService(mConnection);
                 mBound = false;
             }
-        }
-        private boolean requestAllowed() {
-            return (mLastRequest + REQUEST_DISTANCE) < System.nanoTime();
         }
 
         public void connect() {
@@ -500,154 +522,6 @@ public class SetupActivity extends Activity implements ActionBar.TabListener {
 
     }
 
-
-    private void createMyoListener() {
-        mListener = new AbstractDeviceListener() {
-            private Arm mArm = Arm.UNKNOWN;
-            private XDirection mXDirection = XDirection.UNKNOWN;
-
-            private int mRollOffset = 0;
-            private int mRoll;
-            private int mPrevRoll = 0;
-            private int mPitch;
-            private int mYaw;
-
-            private boolean mActive = false;
-            private Pose mCurPose = Pose.UNKNOWN;
-            private boolean mGestureActionDone = false;
-            private long mTimeOfLastAction = 0;
-            private long timeBetweenActions = 700000000L;
-
-
-            public void onConnect(Myo myo, long timestamp) {
-                poseText.setText("Myo Connected!");
-            }
-
-            @Override
-            public void onDisconnect(Myo myo, long timestamp) {
-                poseText.setText("Myo Disconnected!");
-            }
-
-            @Override
-            public void onPose(Myo myo, long timestamp, Pose pose) {
-                poseText.setText("Pose: " + pose);
-
-                if (mActive && pose == Pose.FINGERS_SPREAD) {
-
-                }
-
-
-                mCurPose = pose;
-                mGestureActionDone = false;
-            }
-
-            // onArmRecognized() is called whenever Myo has recognized a setup gesture after someone has put it on their
-            // arm. This lets Myo know which arm it's on and which way it's facing.
-            @Override
-            public void onArmSync(Myo myo, long timestamp, Arm arm, XDirection xDirection) {
-                mArm = arm;
-                mXDirection = xDirection;
-                mRollOffset = mRoll - 9; //Save initial mRoll plus tiny offset for turning arm
-            }
-            // onArmLost() is called whenever Myo has detected that it was moved from a stable position on a person's arm after
-            // it recognized the arm. Typically this happens when someone takes Myo off of their arm, but it can also happen
-            // when Myo is moved around on the arm.
-            @Override
-            public void onArmUnsync(Myo myo, long timestamp) {
-                mArm = Arm.UNKNOWN;
-                mXDirection = XDirection.UNKNOWN;
-                mRollOffset = 0;
-            }
-
-            @Override
-            public void onAccelerometerData(Myo myo, long timestamp, Vector3 vec) {
-                accelText.setText("Acc: " + vec.length());
-                if (mCurPose == Pose.THUMB_TO_PINKY && !mGestureActionDone && (vec.length() > 2 || mActive)) {
-                    if (!mActive) {
-                        myo.vibrate(Myo.VibrationType.SHORT);
-                        poseText.setTextColor(Color.GREEN);
-                    }
-                    else {
-                        myo.vibrate(Myo.VibrationType.MEDIUM);
-                        poseText.setTextColor(Color.BLACK);
-
-                    }
-                    mGestureActionDone = true;
-                    mActive = !mActive;
-                }
-            }
-
-
-            @Override
-            public void onOrientationData(Myo myo, long timestamp, Quaternion rotation) {
-                DecimalFormat twoDForm = new DecimalFormat("#.##");
-
-                mPrevRoll = mRoll;
-                mRoll = (int) Math.toDegrees(Quaternion.roll(rotation)) - mRollOffset;
-                mPitch = (int) (Math.toDegrees(Quaternion.pitch(rotation)));
-                mYaw = (int) Math.toDegrees(Quaternion.yaw(rotation));
-                orientText.setText(
-                        "Pitch: " + mPitch +
-                                "\nRoll: " + mRoll +
-                                "\nYaw: " + mYaw
-                );
-
-                // Adjust mRoll and pitch for the orientation of the Myo on the arm.
-                if (mXDirection == XDirection.TOWARD_ELBOW) {
-                    mPitch *= -1;
-                    mYaw += 180;
-                    mRoll *= -1;
-                }
-
-                orientText.setRotation(mRoll);
-                orientText.setRotationX(mPitch);
-                orientText.setRotationY(mYaw);
-
-                if (mActive) {
-                    switch (mCurPose) {
-                        case FIST:
-                            getVlcFragment().mService.changeVolume(rollDifference());
-                            actionDone();
-                            break;
-                        case WAVE_IN:
-                            if (canDoNewAction()) {
-                                getVlcFragment().mService.rewind();
-                                actionDone();
-                            }
-                        case WAVE_OUT:
-                            if (canDoNewAction()) {
-                                getVlcFragment().mService.fastForward();
-                                actionDone();
-                            }
-                            break;
-                        case FINGERS_SPREAD:
-                            if (canDoNewAction() && !mGestureActionDone) {
-                                getVlcFragment().mService.togglePlay();
-                                actionDone();
-                            }
-                            break;
-                    }
-                }
-            }
-
-            private void actionDone() {
-                mGestureActionDone = true;
-                mTimeOfLastAction = System.nanoTime();
-            }
-
-            private boolean canDoNewAction() {
-                return mTimeOfLastAction + timeBetweenActions < System.nanoTime();
-            }
-
-            private int rollDifference() {
-                if (mRoll > mPrevRoll && mRoll - mPrevRoll < 100 ||
-                        mRoll < mPrevRoll && mPrevRoll - mRoll < 100) {
-                    return mRoll - mPrevRoll;
-                }
-                return 0;
-            }
-        };
-    }
 
     public void pairMyo(View view) {
         Log.d(TAG, "Searching for Myo");
