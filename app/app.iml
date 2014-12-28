@@ -86,7 +86,7 @@
     <orderEntry type="library" exported="" name="support-annotations-21.0.0" level="project" />
     <orderEntry type="library" exported="" name="support-v4-21.0.0" level="project" />
     <orderEntry type="library" exported="" name="support-v13-21.0.0" level="project" />
-    <orderEntry type="library" exported="" name="myosdk-0.8.0" level="project" />
+    <orderEntry type="library" exported="" name="myosdk-0.10.0" level="project" />
   </component>
 </module>
 

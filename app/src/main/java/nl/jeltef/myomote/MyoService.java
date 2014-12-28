@@ -91,6 +91,7 @@ public class MyoService extends Service {
         bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
 
         mHub.attachToAdjacentMyo();
+        //mHub.setLockingPolicy(Hub.LockingPolicy.NONE);
     }
 
     public void setFragment(SetupActivity.MyoSetupFragment fragment) {
@@ -167,9 +168,10 @@ public class MyoService extends Service {
                 mFragment.mAccelText.setText("Acc: " + vec.length());
             }
 
-            // Lock myo if THUMB_TO_PINKY gesture is done and it is unlocked.
+            // Lock myo if DOUBLE_TAP gesture is done and it is unlocked.
             // Unlock it if the same is done and the myo is being moved fast.
-            if (mCurPose == Pose.THUMB_TO_PINKY && !mGestureActionDone && (vec.length() > 2 || mActive)) {
+            if (mHub.getLockingPolicy() == Hub.LockingPolicy.NONE && mCurPose == Pose.DOUBLE_TAP
+                    && !mGestureActionDone && (vec.length() > 2 || mActive)) {
                 if (!mActive) {
                     myo.vibrate(Myo.VibrationType.SHORT);
                     mColor = Color.GREEN;
@@ -188,6 +190,23 @@ public class MyoService extends Service {
                 mGestureActionDone = true;
                 mActive = !mActive;
             }
+        }
+
+        public void onLock(Myo myo, long timestamp) {
+            mColor = Color.BLACK;
+            mActive = false;
+            if (mFragment != null) {
+                mFragment.mPoseText.setTextColor(mColor);
+            }
+        }
+
+        public void onUnlock(Myo myo, long timestamp) {
+            mColor = Color.GREEN;
+            mActive = true;
+            if (mFragment != null) {
+                mFragment.mPoseText.setTextColor(mColor);
+            }
+
         }
 
 
