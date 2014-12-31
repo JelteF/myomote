@@ -40,6 +40,8 @@ public class MyoService extends Service {
     private Arm mArm = Arm.UNKNOWN;
     private XDirection mXDirection = XDirection.UNKNOWN;
     private Pose mCurPose = Pose.UNKNOWN;
+    private long mTimeOfDoubleTap = 0;
+    private static final long UNLOCK_TIME_DIFF = 200000000L;
 
     private int mRollOffset = 0;
     private int mRoll;
@@ -91,7 +93,7 @@ public class MyoService extends Service {
         bindService(intent, mConnection, Context.BIND_AUTO_CREATE);
 
         mHub.attachToAdjacentMyo();
-        //mHub.setLockingPolicy(Hub.LockingPolicy.NONE);
+        mHub.setLockingPolicy(Hub.LockingPolicy.NONE);
     }
 
     public void setFragment(SetupActivity.MyoSetupFragment fragment) {
@@ -130,10 +132,10 @@ public class MyoService extends Service {
         public void onPose(Myo myo, long timestamp, Pose pose) {
             setPoseText("Pose: " + pose);
 
-
-            if (mActive && pose == Pose.FINGERS_SPREAD) {
-
+            if (pose == Pose.DOUBLE_TAP) {
+                mTimeOfDoubleTap = System.nanoTime();
             }
+            Log.d(TAG, "DoubleTap: " + mTimeOfDoubleTap);
 
 
             mCurPose = pose;
@@ -170,25 +172,27 @@ public class MyoService extends Service {
 
             // Lock myo if DOUBLE_TAP gesture is done and it is unlocked.
             // Unlock it if the same is done and the myo is being moved fast.
-            if (mHub.getLockingPolicy() == Hub.LockingPolicy.NONE && mCurPose == Pose.DOUBLE_TAP
-                    && !mGestureActionDone && (vec.length() > 2 || mActive)) {
-                if (!mActive) {
-                    myo.vibrate(Myo.VibrationType.SHORT);
-                    mColor = Color.GREEN;
-
-                }
-                else {
-                    myo.vibrate(Myo.VibrationType.MEDIUM);
-                    mColor = Color.BLACK;
-
-                }
-
+            if (mHub.getLockingPolicy() == Hub.LockingPolicy.NONE && mCurPose == Pose.DOUBLE_TAP &&
+                    mActive && !mGestureActionDone) {
+                myo.vibrate(Myo.VibrationType.MEDIUM);
+                mColor = Color.BLACK;
                 if (mFragment != null) {
                     mFragment.mPoseText.setTextColor(mColor);
                 }
-
-                mGestureActionDone = true;
                 mActive = !mActive;
+                mTimeOfDoubleTap = 0;
+                mGestureActionDone = true;
+            }
+            if (mHub.getLockingPolicy() == Hub.LockingPolicy.NONE && !mActive && vec.length() > 2 &&
+                    mTimeOfDoubleTap + UNLOCK_TIME_DIFF > System.nanoTime()) {
+                myo.vibrate(Myo.VibrationType.SHORT);
+                mColor = Color.GREEN;
+                if (mFragment != null) {
+                    mFragment.mPoseText.setTextColor(mColor);
+                }
+                mActive = !mActive;
+                mGestureActionDone = true;
+
             }
         }
 
